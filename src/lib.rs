@@ -1,7 +1,9 @@
 pub mod calc;
+pub mod gui;
 pub mod models;
 
 pub use calc::*;
+pub use gui::*;
 pub use models::*;
 
 use serde::{Deserialize, Serialize};

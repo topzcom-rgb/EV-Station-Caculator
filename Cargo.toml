@@ -4,9 +4,11 @@ version = "0.1.0"
 edition = "2024"
 
 [lib]
-crate-type = ["cdylib", "rlib"]
+crate-type = ["rlib"]
 
 [dependencies]
+eframe = { version = "0.36.2", default-features = false, features = ["glow", "default_fonts"] }
+egui = { version = "0.36.2", default-features = false, features = ["default_fonts"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 thiserror = "1.0"
