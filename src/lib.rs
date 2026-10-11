@@ -1,8 +1,12 @@
 pub mod calc;
+pub mod export;
+#[cfg(feature = "gui")]
 pub mod gui;
 pub mod models;
 
 pub use calc::*;
+pub use export::*;
+#[cfg(feature = "gui")]
 pub use gui::*;
 pub use models::*;
 

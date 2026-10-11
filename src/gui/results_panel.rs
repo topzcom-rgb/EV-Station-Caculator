@@ -1,5 +1,6 @@
 use egui::{Color32, Grid, RichText, ScrollArea, Ui};
 
+use crate::export::{export_load_schedule, export_sld_dxf, pick_save_path};
 use crate::gui::EvStationApp;
 
 /// เรนเดอร์หน้าจอสรุปผลทางวิศวกรรมไฟฟ้าบน CentralPanel
@@ -18,26 +19,101 @@ pub fn render_results_panel(app: &mut EvStationApp, ui: &mut Ui) {
                 return;
             }
 
-            let Some(result) = &app.calculation_result else {
+            if let Some(result) = &app.calculation_result {
+                // 1. Header Status Card: หม้อแปลงไฟฟ้าที่แนะนำ
+                render_transformer_header_card(result, ui);
+                ui.add_space(10.0);
+
+                // 2. แถบปุ่มส่งออกเอกสารวิศวกรรม (Excel & DXF)
+                render_export_toolbar(result, &mut app.export_status, ui);
+                ui.add_space(14.0);
+
+                // 3. ตารางสรุปโหลดรวม (Summary Cards / Table)
+                render_load_summary_section(result, ui);
+                ui.add_space(16.0);
+
+                // 4. ตารางอุปกรณ์ MDB เมน
+                render_main_equipment_section(result, ui);
+                ui.add_space(16.0);
+
+                // 5. ตารางวงจรย่อยและสายไฟตู้ชาร์จแต่ละตู้ (Branch Circuits Table)
+                render_branch_circuits_section(result, ui);
+            } else {
                 ui.label("กำลังรอข้อมูลการคำนวณ...");
-                return;
             };
-
-            // 1. Header Status Card: หม้อแปลงไฟฟ้าที่แนะนำ
-            render_transformer_header_card(result, ui);
-            ui.add_space(12.0);
-
-            // 2. ตารางสรุปโหลดรวม (Summary Cards / Table)
-            render_load_summary_section(result, ui);
-            ui.add_space(16.0);
-
-            // 3. ตารางอุปกรณ์ MDB เมน
-            render_main_equipment_section(result, ui);
-            ui.add_space(16.0);
-
-            // 4. ตารางวงจรย่อยและสายไฟตู้ชาร์จแต่ละตู้ (Branch Circuits Table)
-            render_branch_circuits_section(result, ui);
         });
+}
+
+fn render_export_toolbar(
+    result: &crate::StationOutput,
+    export_status: &mut Option<(String, bool)>,
+    ui: &mut Ui,
+) {
+    let result_clone = result.clone();
+
+    ui.group(|ui| {
+        ui.horizontal_wrapped(|ui| {
+            ui.label(RichText::new("📁 ส่งออกเอกสารวิศวกรรม:").strong());
+
+            if ui
+                .button(
+                    RichText::new("📊 ส่งออก Excel Load Schedule (.xlsx)")
+                        .color(Color32::from_rgb(34, 197, 94))
+                        .strong(),
+                )
+                .clicked()
+            {
+                if let Some(path) = pick_save_path("EV_Station_Load_Schedule", "xlsx") {
+                    match export_load_schedule(&result_clone, &path) {
+                        Ok(_) => {
+                            *export_status = Some((
+                                format!("✅ ส่งออก Excel Load Schedule สำเร็จ: {}", path.display()),
+                                true,
+                            ));
+                        }
+                        Err(e) => {
+                            *export_status =
+                                Some((format!("❌ ส่งออก Excel ล้มเหลว: {}", e), false));
+                        }
+                    }
+                }
+            }
+
+            if ui
+                .button(
+                    RichText::new("📐 ส่งออก CAD Single-Line Diagram (.dxf)")
+                        .color(Color32::from_rgb(56, 189, 248))
+                        .strong(),
+                )
+                .clicked()
+            {
+                if let Some(path) = pick_save_path("EV_Station_SLD", "dxf") {
+                    match export_sld_dxf(&result_clone, &path) {
+                        Ok(_) => {
+                            *export_status = Some((
+                                format!("✅ ส่งออก CAD SLD (.dxf) สำเร็จ: {}", path.display()),
+                                true,
+                            ));
+                        }
+                        Err(e) => {
+                            *export_status =
+                                Some((format!("❌ ส่งออก DXF ล้มเหลว: {}", e), false));
+                        }
+                    }
+                }
+            }
+        });
+
+        if let Some((msg, is_success)) = export_status.as_ref() {
+            let color = if *is_success {
+                Color32::from_rgb(34, 197, 94)
+            } else {
+                Color32::from_rgb(239, 68, 68)
+            };
+            ui.add_space(4.0);
+            ui.label(RichText::new(msg).color(color).size(15.0));
+        }
+    });
 }
 
 fn render_transformer_header_card(result: &crate::StationOutput, ui: &mut Ui) {

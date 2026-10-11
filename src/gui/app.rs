@@ -52,6 +52,8 @@ pub struct EvStationApp {
     pub calculation_result: Option<StationOutput>,
     /// ข้อความแจ้งเตือน Error ล่าสุด (ถ้ามี)
     pub error_message: Option<String>,
+    /// สถานะการส่งออกไฟล์ (ข้อความ, เป็นผลสำเร็จหรือไม่)
+    pub export_status: Option<(String, bool)>,
     /// Flag บ่งบอกว่ามีการแก้ไขข้อมูลที่ต้องคำนวณใหม่
     pub is_dirty: bool,
     /// โหมดการแสดงผล (Dark mode / Light mode)
@@ -85,6 +87,7 @@ impl Default for EvStationApp {
             main_cable_distance_m: 20.0,
             calculation_result: None,
             error_message: None,
+            export_status: None,
             is_dirty: true,
             dark_mode: true,
         };
@@ -182,23 +185,23 @@ impl EvStationApp {
     }
 }
 
-impl eframe::App for EvStationApp {
-    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
-        // 1. อัปเดตธีม (Dark / Light)
-        crate::gui::theme::apply_theme(ui.ctx(), self.dark_mode);
-
-        // 2. Input Panel ฝั่งซ้าย
-        egui::Panel::left("station_input_side_panel")
-            .default_size(380.0)
-            .size_range(320.0..=480.0)
-            .resizable(true)
-            .show(ui, |ui| {
-                crate::gui::input_panel::render_input_panel(self, ui);
-            });
-
-        // 3. Results Panel ตรงกลาง
-        egui::CentralPanel::default().show(ui, |ui| {
-            crate::gui::results_panel::render_results_panel(self, ui);
-        });
-    }
-}
+// impl eframe::App for EvStationApp {
+//     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+//         // 1. อัปเดตธีม (Dark / Light)
+//         crate::gui::theme::apply_theme(ui.ctx(), self.dark_mode);
+// 
+//         // 2. Input Panel ฝั่งซ้าย
+//         egui::Panel::left("station_input_side_panel")
+//             .default_size(380.0)
+//             .size_range(320.0..=480.0)
+//             .resizable(true)
+//             .show(ui, |ui| {
+//                 crate::gui::input_panel::render_input_panel(self, ui);
+//             });
+// 
+//         // 3. Results Panel ตรงกลาง
+//         egui::CentralPanel::default().show(ui, |ui| {
+//             crate::gui::results_panel::render_results_panel(self, ui);
+//         });
+//     }
+// }
