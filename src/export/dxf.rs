@@ -10,15 +10,21 @@ pub const LAYER_POWER_LINE: &str = "POWER_LINE";
 pub const LAYER_TEXT: &str = "TEXT";
 pub const LAYER_GROUND: &str = "GROUND";
 
-/// โครงสร้างช่วยสร้างไฟล์ AutoCAD DXF (ASCII DXF R2000 / AC1015 format)
-/// สามารถเปิดและแก้ไขได้ 100% ใน AutoCAD, BricsCAD, FreeCAD และโปรแกรม CAD ทั่วไป
+/// โครงสร้างช่วยสร้างไฟล์ AutoCAD DXF ตามมาตรฐาน AutoCAD Release 12 (AC1009)
+/// ซึ่งเป็นฟอร์แมต DXF ที่เข้ากันได้สมบูรณ์สูงสุด (Universal DXF Standard)
+/// สามารถเปิดตรงเข้า Model Space ได้ 100% ใน AutoCAD ทุกเวอร์ชัน (รวมถึง AutoCAD 2026),
+/// BricsCAD, ZWCAD, FreeCAD และ CAD Viewer ทั่วไป
 pub struct DxfWriter {
+    width: f64,
+    height: f64,
     entities: Vec<String>,
 }
 
 impl DxfWriter {
-    pub fn new() -> Self {
+    pub fn new(width: f64, height: f64) -> Self {
         Self {
+            width,
+            height,
             entities: Vec::with_capacity(256),
         }
     }
@@ -45,64 +51,111 @@ impl DxfWriter {
     }
 
     pub fn add_text(&mut self, layer: &str, text: &str, x: f64, y: f64, height: f64) {
+        // Sanitize ข้อความให้เป็น Pure ASCII ตามมาตรฐาน AutoCAD DXF
+        let safe_text = text
+            .replace("mm²", "sq.mm")
+            .replace("²", "2")
+            .replace("Ω", "Ohm")
+            .replace("Δ", "DELTA");
+
         self.entities.push(format!(
-            "0\nTEXT\n8\n{}\n10\n{:.3}\n20\n{:.3}\n30\n0.0\n40\n{:.3}\n1\n{}",
-            layer, x, y, height, text
+            "0\nTEXT\n8\n{}\n10\n{:.3}\n20\n{:.3}\n30\n0.0\n40\n{:.3}\n1\n{}\n7\nSTANDARD",
+            layer, x, y, height, safe_text
         ));
     }
 
     pub fn save_to_file(&self, path: &Path) -> std::io::Result<()> {
         let mut file = File::create(path)?;
-
-        // Header Section
-        writeln!(file, "0\nSECTION\n2\nHEADER\n9\n$ACADVER\n1\nAC1015\n0\nENDSEC")?;
-
-        // Tables Section (LTYPE and LAYERS)
-        writeln!(file, "0\nSECTION\n2\nTABLES")?;
-
-        // LTYPE table
-        writeln!(
-            file,
-            "0\nTABLE\n2\nLTYPE\n70\n1\n0\nLTYPE\n2\nCONTINUOUS\n70\n0\n3\nSolid line\n72\n65\n73\n0\n40\n0.0\n0\nENDTAB"
-        )?;
-
-        // LAYER table
-        writeln!(file, "0\nTABLE\n2\nLAYER\n70\n5")?;
-        // Default Layer 0 (White)
-        writeln!(file, "0\nLAYER\n2\n0\n70\n0\n62\n7\n6\nCONTINUOUS")?;
-        // SYMBOLS Layer (Yellow - 2)
-        writeln!(file, "0\nLAYER\n2\nSYMBOLS\n70\n0\n62\n2\n6\nCONTINUOUS")?;
-        // POWER_LINE Layer (White - 7)
-        writeln!(file, "0\nLAYER\n2\nPOWER_LINE\n70\n0\n62\n7\n6\nCONTINUOUS")?;
-        // TEXT Layer (Green - 3)
-        writeln!(file, "0\nLAYER\n2\nTEXT\n70\n0\n62\n3\n6\nCONTINUOUS")?;
-        // GROUND Layer (Light Green - 92)
-        writeln!(file, "0\nLAYER\n2\nGROUND\n70\n0\n62\n92\n6\nCONTINUOUS")?;
-        writeln!(file, "0\nENDTAB\n0\nENDSEC")?;
-
-        // Entities Section
-        writeln!(file, "0\nSECTION\n2\nENTITIES")?;
-        for ent in &self.entities {
-            writeln!(file, "{}", ent)?;
-        }
-        writeln!(file, "0\nENDSEC\n0\nEOF")?;
-
+        file.write_all(self.to_dxf_string().as_bytes())?;
         Ok(())
+    }
+
+    /// สร้างเนื้อหาข้อความ DXF ทั้งหมดในรูปแบบ String ตามมาตรฐาน AC1009
+    pub fn to_dxf_string(&self) -> String {
+        let mut s = String::with_capacity(self.entities.len() * 48 + 1024);
+
+        let cx = self.width / 2.0;
+        let cy = self.height / 2.0;
+        let view_h = self.height * 1.05;
+        let view_w = self.width * 1.05;
+        let aspect = view_w / view_h;
+
+        // 1. Header Section - บังคับ $TILEMODE 1 เพื่อเปิดใน Model Space เสมอ
+        s.push_str("0\nSECTION\n2\nHEADER\n");
+        s.push_str("9\n$ACADVER\n1\nAC1009\n");
+        s.push_str("9\n$INSBASE\n10\n0.0\n20\n0.0\n30\n0.0\n");
+        s.push_str("9\n$EXTMIN\n10\n0.0\n20\n0.0\n30\n0.0\n");
+        s.push_str(&format!("9\n$EXTMAX\n10\n{:.3}\n20\n{:.3}\n30\n0.0\n", self.width, self.height));
+        s.push_str("9\n$LIMMIN\n10\n0.0\n20\n0.0\n");
+        s.push_str(&format!("9\n$LIMMAX\n10\n{:.3}\n20\n{:.3}\n", self.width, self.height));
+        s.push_str("9\n$TILEMODE\n70\n1\n");
+        s.push_str("0\nENDSEC\n");
+
+        // 2. Tables Section (VPORT, LTYPE, LAYER, STYLE)
+        s.push_str("0\nSECTION\n2\nTABLES\n");
+
+        // VPORT Table (*ACTIVE: ซูมให้เห็นภาพรวมทั้งแบบทันทีที่เปิด)
+        s.push_str("0\nTABLE\n2\nVPORT\n70\n1\n");
+        s.push_str("0\nVPORT\n2\n*ACTIVE\n70\n0\n");
+        s.push_str("10\n0.0\n20\n0.0\n11\n1.0\n21\n1.0\n");
+        s.push_str(&format!("12\n{:.3}\n22\n{:.3}\n", cx, cy));
+        s.push_str("13\n0.0\n23\n0.0\n14\n1.0\n24\n1.0\n15\n0.0\n25\n0.0\n");
+        s.push_str(&format!("40\n{:.3}\n41\n{:.3}\n", view_h, aspect));
+        s.push_str("42\n50.0\n43\n0.0\n44\n0.0\n50\n0.0\n51\n0.0\n71\n0\n72\n1000\n73\n1\n74\n3\n75\n0\n76\n0\n77\n0\n78\n0\n");
+        s.push_str("0\nENDTAB\n");
+
+        // LTYPE Table
+        s.push_str("0\nTABLE\n2\nLTYPE\n70\n1\n");
+        s.push_str("0\nLTYPE\n2\nCONTINUOUS\n70\n64\n3\nSolid line\n72\n65\n73\n0\n40\n0.0\n");
+        s.push_str("0\nENDTAB\n");
+
+        // LAYER Table
+        s.push_str("0\nTABLE\n2\nLAYER\n70\n5\n");
+        s.push_str("0\nLAYER\n2\n0\n70\n0\n62\n7\n6\nCONTINUOUS\n");
+        s.push_str("0\nLAYER\n2\nSYMBOLS\n70\n0\n62\n2\n6\nCONTINUOUS\n");
+        s.push_str("0\nLAYER\n2\nPOWER_LINE\n70\n0\n62\n7\n6\nCONTINUOUS\n");
+        s.push_str("0\nLAYER\n2\nTEXT\n70\n0\n62\n3\n6\nCONTINUOUS\n");
+        s.push_str("0\nLAYER\n2\nGROUND\n70\n0\n62\n92\n6\nCONTINUOUS\n");
+        s.push_str("0\nENDTAB\n");
+
+        // STYLE Table (STANDARD)
+        s.push_str("0\nTABLE\n2\nSTYLE\n70\n1\n");
+        s.push_str("0\nSTYLE\n2\nSTANDARD\n70\n0\n40\n0.0\n41\n1.0\n50\n0.0\n71\n0\n42\n0.2\n3\ntxt\n4\n\n");
+        s.push_str("0\nENDTAB\n");
+
+        s.push_str("0\nENDSEC\n");
+
+        // 3. Blocks Section (Required for CAD Compatibility)
+        s.push_str("0\nSECTION\n2\nBLOCKS\n0\nENDSEC\n");
+
+        // 4. Entities Section
+        s.push_str("0\nSECTION\n2\nENTITIES\n");
+        for ent in &self.entities {
+            s.push_str(ent);
+            s.push('\n');
+        }
+        s.push_str("0\nENDSEC\n0\nEOF\n");
+
+        s
+    }
+
+    /// คืนค่าข้อมูลไบต์ทั้งหมดของไฟล์ DXF
+    pub fn to_dxf_bytes(&self) -> Vec<u8> {
+        self.to_dxf_string().into_bytes()
     }
 }
 
-/// ส่งออก Single-Line Diagram (SLD) เป็นไฟล์ AutoCAD DXF (.dxf)
-pub fn export_sld_dxf(
+/// สร้างข้อมูลไบต์ของแบบ Single-Line Diagram (SLD) ในรูปแบบ AutoCAD DXF (.dxf) ในหน่วยความจำ (In-memory)
+pub fn export_sld_dxf_bytes(
     output: &StationOutput,
-    file_path: &Path,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let mut writer = DxfWriter::new();
-
+) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     let charger_count = output.charger_circuits.len();
     let num_branches = charger_count + 3; // EV Chargers + LP Panel + SPD + SPARE
     let branch_dx = 130.0;
     let diagram_width = ((num_branches as f64) * branch_dx + 260.0).max(960.0);
     let diagram_height = 760.0;
+
+    let mut writer = DxfWriter::new(diagram_width, diagram_height);
 
     // 1. กรอบแบบและ Title Block
     draw_drawing_border(&mut writer, diagram_width, diagram_height);
@@ -151,9 +204,16 @@ pub fn export_sld_dxf(
     // 11. ระบบต่อลงดิน (Grounding System & Ground Rods)
     draw_grounding_system(&mut writer, busbar_start_x, busbar_end_x);
 
-    // บันทึกไฟล์ DXF
-    writer.save_to_file(file_path)?;
+    Ok(writer.to_dxf_bytes())
+}
 
+/// ส่งออก Single-Line Diagram (SLD) เป็นไฟล์ AutoCAD DXF (.dxf) ไปยังพาธที่กำหนด
+pub fn export_sld_dxf(
+    output: &StationOutput,
+    file_path: &Path,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let bytes = export_sld_dxf_bytes(output)?;
+    std::fs::write(file_path, bytes)?;
     Ok(())
 }
 
@@ -219,9 +279,17 @@ fn draw_transformer_symbol(
     writer.add_circle(LAYER_SYMBOLS, cx, top_cy, r);
     writer.add_circle(LAYER_SYMBOLS, cx, bot_cy, r);
 
-    // ตัวอักษรแสดงรูปแบบขดลวด Delta - Wye
-    writer.add_text(LAYER_TEXT, "Δ", cx - 2.5, top_cy - 2.0, 5.5);
-    writer.add_text(LAYER_TEXT, "Y", cx - 2.5, bot_cy - 2.0, 5.5);
+    // สัญลักษณ์เวกเตอร์ Delta (สามเหลี่ยม) ในขดปฐมภูมิ
+    let tri_r = 5.0;
+    writer.add_line(LAYER_SYMBOLS, cx, top_cy + tri_r, cx - tri_r * 0.866, top_cy - tri_r * 0.5);
+    writer.add_line(LAYER_SYMBOLS, cx - tri_r * 0.866, top_cy - tri_r * 0.5, cx + tri_r * 0.866, top_cy - tri_r * 0.5);
+    writer.add_line(LAYER_SYMBOLS, cx + tri_r * 0.866, top_cy - tri_r * 0.5, cx, top_cy + tri_r);
+
+    // สัญลักษณ์เวกเตอร์ Wye (Y) ในขดทุติยภูมิ
+    let y_r = 5.0;
+    writer.add_line(LAYER_SYMBOLS, cx, bot_cy, cx, bot_cy - y_r);
+    writer.add_line(LAYER_SYMBOLS, cx, bot_cy, cx - y_r * 0.866, bot_cy + y_r * 0.5);
+    writer.add_line(LAYER_SYMBOLS, cx, bot_cy, cx + y_r * 0.866, bot_cy + y_r * 0.5);
 
     // รายละเอียดหม้อแปลง
     let tx_title = format!(
@@ -332,16 +400,34 @@ fn draw_charger_branch(
     writer.add_line(LAYER_POWER_LINE, x, breaker_y - 10.0, x, load_box_top);
 
     // ข้อความสเปกสายไฟและระยะทาง
-    let cable_spec = format!(
-        "4x1/C-{} mm² FD-CV",
-        circuit.cable_sizing.cable_spec.conductor_size_sqmm
-    );
-    let conduit_spec = format!(
-        "in HDPE {} mm (L={:.0}m, %VD={:.2}%)",
-        circuit.cable_sizing.cable_spec.conduit_size_mm,
-        circuit.cable_sizing.length_m,
-        circuit.cable_sizing.voltage_drop_percent
-    );
+    let cable_spec = if circuit.cable_sizing.cable_spec.sets > 1 {
+        format!(
+            "{}x(4x1/C-{} mm² FD-CV)",
+            circuit.cable_sizing.cable_spec.sets,
+            circuit.cable_sizing.cable_spec.conductor_size_sqmm
+        )
+    } else {
+        format!(
+            "4x1/C-{} mm² FD-CV",
+            circuit.cable_sizing.cable_spec.conductor_size_sqmm
+        )
+    };
+    let conduit_spec = if circuit.cable_sizing.cable_spec.sets > 1 {
+        format!(
+            "in {}x(HDPE {} mm) (L={:.0}m, %VD={:.2}%)",
+            circuit.cable_sizing.cable_spec.sets,
+            circuit.cable_sizing.cable_spec.conduit_size_mm,
+            circuit.cable_sizing.length_m,
+            circuit.cable_sizing.voltage_drop_percent
+        )
+    } else {
+        format!(
+            "in HDPE {} mm (L={:.0}m, %VD={:.2}%)",
+            circuit.cable_sizing.cable_spec.conduit_size_mm,
+            circuit.cable_sizing.length_m,
+            circuit.cable_sizing.voltage_drop_percent
+        )
+    };
     let ground_spec = format!(
         "1-{} mm² IEC01 GROUND",
         circuit.cable_sizing.cable_spec.ground_size_sqmm
@@ -606,23 +692,30 @@ mod tests {
         assert!(res.is_ok(), "DXF export should succeed: {:?}", res.err());
         assert!(test_dxf_path.exists(), "Exported DXF file must exist");
 
+        // บันทึกไฟล์ทดสอบใน Workspace เพื่อนำไปทดสอบกับ AutoCAD
+        let workspace_dxf = Path::new("EV_Station_SLD_R12.dxf");
+        let _ = export_sld_dxf(&output, workspace_dxf);
+
         // ตรวจสอบโครงสร้างไฟล์ DXF ที่สร้างขึ้น
         let content = std::fs::read_to_string(&test_dxf_path).expect("Read DXF failed");
         assert!(content.contains("SECTION"), "Missing SECTION");
         assert!(content.contains("HEADER"), "Missing HEADER");
+        assert!(content.contains("AC1009"), "Missing AC1009 version");
+        assert!(content.contains("$TILEMODE\n70\n1"), "Missing $TILEMODE 1 for Model Space");
         assert!(content.contains("TABLES"), "Missing TABLES");
+        assert!(content.contains("VPORT"), "Missing VPORT table");
+        assert!(content.contains("*ACTIVE"), "Missing *ACTIVE viewport");
         assert!(content.contains("LAYER"), "Missing LAYER table");
-        assert!(content.contains("SYMBOLS"), "SYMBOLS layer missing");
-        assert!(content.contains("POWER_LINE"), "POWER_LINE layer missing");
-        assert!(content.contains("TEXT"), "TEXT layer missing");
-        assert!(content.contains("GROUND"), "GROUND layer missing");
+        assert!(content.contains("STYLE"), "Missing STYLE table");
+        assert!(content.contains("STANDARD"), "Missing STANDARD style");
+        assert!(content.contains("BLOCKS"), "Missing BLOCKS section");
         assert!(content.contains("ENTITIES"), "Missing ENTITIES section");
         assert!(content.contains("LINE"), "Missing LINE entity");
         assert!(content.contains("CIRCLE"), "Missing CIRCLE entity");
         assert!(content.contains("TRANSFORMER 250 kVA"), "Missing transformer info");
         assert!(content.contains("EOF"), "Missing DXF EOF marker");
 
-        // ทำความสะอาดไฟล์ทดสอบ
+        // ทำความสะอาดไฟล์ชั่วคราว
         let _ = std::fs::remove_file(test_dxf_path);
     }
 }

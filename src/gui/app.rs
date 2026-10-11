@@ -1,6 +1,6 @@
-use ev_station_calculator::calc::load::DEFAULT_SYSTEM_VOLTAGE_V;
-use ev_station_calculator::models::{AuxLoad, ChargerType, ChargerUnit, PhaseConnection};
-use ev_station_calculator::{StationDesignEngine, StationInput, StationOutput};
+use crate::calc::load::DEFAULT_SYSTEM_VOLTAGE_V;
+use crate::models::{AuxLoad, ChargerType, ChargerUnit, PhaseConnection};
+use crate::{StationDesignEngine, StationInput, StationOutput};
 
 /// หน่วยของโหลดเสริมที่ผู้ใช้เลือกกรอกใน UI
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

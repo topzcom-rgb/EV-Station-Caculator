@@ -4,10 +4,10 @@ use std::path::Path;
 use crate::StationOutput;
 
 /// ส่งออกตาราง Load Schedule เป็นไฟล์ Excel (.xlsx) ตามมาตรฐานวิศวกรรมไฟฟ้าและเอกสารอ้างอิง
-pub fn export_load_schedule(
+/// สร้างข้อมูลไบต์ของไฟล์ Excel (.xlsx) สำหรับตาราง Load Schedule ในหน่วยความจำ (In-memory)
+pub fn export_load_schedule_bytes(
     output: &StationOutput,
-    file_path: &Path,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     let mut workbook = Workbook::new();
     let worksheet = workbook.add_worksheet();
     worksheet.set_name("Load Schedule")?;
@@ -181,17 +181,32 @@ pub fn export_load_schedule(
         worksheet.write_number_with_format(current_row, 5, total_va, &cell_number)?;
 
         worksheet.write_string_with_format(current_row, 6, &circuit.branch_breaker.name, &cell_center)?;
-        let phase_cable_desc = format!(
-            "4x1/C-{} mm²",
-            circuit.cable_sizing.cable_spec.conductor_size_sqmm
-        );
+        let phase_cable_desc = if circuit.cable_sizing.cable_spec.sets > 1 {
+            format!(
+                "{}x(4x1/C-{} mm²)",
+                circuit.cable_sizing.cable_spec.sets,
+                circuit.cable_sizing.cable_spec.conductor_size_sqmm
+            )
+        } else {
+            format!(
+                "4x1/C-{} mm²",
+                circuit.cable_sizing.cable_spec.conductor_size_sqmm
+            )
+        };
         worksheet.write_string_with_format(current_row, 7, &phase_cable_desc, &cell_center)?;
         let ground_cable_desc = format!(
             "1-{} mm²",
             circuit.cable_sizing.cable_spec.ground_size_sqmm
         );
         worksheet.write_string_with_format(current_row, 8, &ground_cable_desc, &cell_center)?;
-        let conduit_desc = format!("HDPE {}", circuit.cable_sizing.cable_spec.conduit_size_mm);
+        let conduit_desc = if circuit.cable_sizing.cable_spec.sets > 1 {
+            format!(
+                "{}x(HDPE {})",
+                circuit.cable_sizing.cable_spec.sets, circuit.cable_sizing.cable_spec.conduit_size_mm
+            )
+        } else {
+            format!("HDPE {}", circuit.cable_sizing.cable_spec.conduit_size_mm)
+        };
         worksheet.write_string_with_format(current_row, 9, &conduit_desc, &cell_center)?;
         worksheet.write_number_with_format(current_row, 10, circuit.cable_sizing.length_m, &cell_center)?;
         worksheet.write_number_with_format(
@@ -361,7 +376,17 @@ pub fn export_load_schedule(
     worksheet.set_column_width(10, 12)?;
     worksheet.set_column_width(11, 16)?;
 
-    workbook.save(file_path)?;
+    let buffer = workbook.save_to_buffer()?;
+    Ok(buffer)
+}
+
+/// ส่งออกตาราง Load Schedule เป็นไฟล์ Excel (.xlsx) ไปยังพาธที่กำหนด
+pub fn export_load_schedule(
+    output: &StationOutput,
+    file_path: &Path,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let bytes = export_load_schedule_bytes(output)?;
+    std::fs::write(file_path, bytes)?;
     Ok(())
 }
 

@@ -264,7 +264,13 @@ pub fn calculate_voltage_drop_3phase(
     (3.0_f64.sqrt() * current_a * length_m * z_effective) / 1000.0
 }
 
-/// 3 & 4. Cable & Conduit Selection พร้อม Voltage Drop Validation (อัปเกรดอัตโนมัติหาก > 2.0%)
+/// ขนาดสายไฟสูงสุดที่แนะนำต่อ 1 วงจร (mm²) ตามมาตรฐานการจัดสายเข้าตู้สวิตช์บอร์ด/ตู้ชาร์จ
+/// สายขนาดเกิน 240 mm² รัศมีดัดโค้งใหญ่มากและจัดสายเข้าเบรกเกอร์/บัสบาร์ในตู้ไม่ได้จริงหน้างาน
+pub const MAX_RECOMMENDED_CABLE_SIZE_SQMM: f64 = 240.0;
+
+/// 3 & 4. Cable & Conduit Selection พร้อม Voltage Drop Validation
+/// - จำกัดขนาดสายเดี่ยวไม่เกิน 240 mm² ตามข้อกำหนดความสามารถในการจัดสายเข้าตู้
+/// - หากกระแสหรือ Voltage Drop สูงเกินกว่าสาย 240 mm² เส้นเดียวจะรับได้ ระบบจะคำนวณแบ่งเป็นสายควบขนาน (Parallel Sets: เช่น 2x(4x1/C-185 mm²))
 pub fn size_cable_with_vd(
     current_a: f64,
     length_m: f64,
@@ -272,58 +278,109 @@ pub fn size_cable_with_vd(
     system_voltage_v: f64,
     max_vd_percent: f64,
 ) -> CableSizingResult {
-    // 1. ค้นหาขนาดสายเริ่มต้นที่ ampacity >= current_a * 1.25 (หรืออย่างน้อย ampacity >= current_a)
     let min_ampacity_needed = current_a * 1.25;
 
-    let start_idx = STANDARD_CV_CABLES
+    // รายการสายที่ยอมรับได้ (ไม่เกิน 240 mm²)
+    let allowed_cables: Vec<&CableAmpacityData> = STANDARD_CV_CABLES
         .iter()
-        .position(|c| c.ampacity_a >= min_ampacity_needed)
-        .unwrap_or(STANDARD_CV_CABLES.len() - 1);
+        .filter(|c| c.size_sqmm <= MAX_RECOMMENDED_CABLE_SIZE_SQMM)
+        .collect();
 
-    let initial_idx = start_idx;
-    let mut selected_idx = start_idx;
-    let mut vd_v = 0.0;
-    let mut vd_percent = 0.0;
+    // ทดสอบจำนวนชุดสายควบ (sets = 1, 2, 3, 4, ...)
+    for sets in 1..=6 {
+        let _current_per_set = current_a / (sets as f64);
+        let min_ampacity_per_set = min_ampacity_needed / (sets as f64);
 
-    // 2. Loop ตรวจสอบ Voltage Drop ถ้า > max_vd_percent ให้อัปเกรดสายขึ้น 1 สเต็ป
-    while selected_idx < STANDARD_CV_CABLES.len() {
-        let cable = &STANDARD_CV_CABLES[selected_idx];
-        vd_v = calculate_voltage_drop_3phase(
-            current_a,
-            length_m,
-            cable.r_ohm_per_km,
-            cable.x_ohm_per_km,
-            power_factor,
-        );
-        vd_percent = (vd_v / system_voltage_v) * 100.0;
+        // หาขนาดสายที่รับกระแสพิกัดได้
+        if let Some(start_idx) = allowed_cables
+            .iter()
+            .position(|c| c.ampacity_a >= min_ampacity_per_set)
+        {
+            let mut selected_idx = start_idx;
+            let mut vd_v = 0.0;
+            let mut vd_percent = 0.0;
 
-        if vd_percent <= max_vd_percent || selected_idx == STANDARD_CV_CABLES.len() - 1 {
-            break;
+            // ตรวจสอบ Voltage Drop โดยรวม (สายควบ R_eq = R/sets, X_eq = X/sets)
+            while selected_idx < allowed_cables.len() {
+                let cable = allowed_cables[selected_idx];
+                let r_eff = cable.r_ohm_per_km / (sets as f64);
+                let x_eff = cable.x_ohm_per_km / (sets as f64);
+
+                vd_v = calculate_voltage_drop_3phase(
+                    current_a,
+                    length_m,
+                    r_eff,
+                    x_eff,
+                    power_factor,
+                );
+                vd_percent = (vd_v / system_voltage_v) * 100.0;
+
+                if vd_percent <= max_vd_percent || selected_idx == allowed_cables.len() - 1 {
+                    break;
+                }
+                selected_idx += 1;
+            }
+
+            if vd_percent <= max_vd_percent || sets == 6 {
+                let final_cable = allowed_cables[selected_idx];
+                let (ground_sqmm, _ground_conduit_mm) =
+                    select_ground_wire_size_sqmm(final_cable.size_sqmm);
+
+                let description = if sets == 1 {
+                    format!(
+                        "4x1/C-{} mm² FD-0.6/1kV-CV in HDPE {} mm + 1-{} mm² IEC01 (Ground)",
+                        final_cable.size_sqmm, final_cable.conduit_size_mm, ground_sqmm
+                    )
+                } else {
+                    format!(
+                        "{}x(4x1/C-{} mm² FD-0.6/1kV-CV in HDPE {} mm) + 1-{} mm² IEC01 (Ground)",
+                        sets, final_cable.size_sqmm, final_cable.conduit_size_mm, ground_sqmm
+                    )
+                };
+
+                let cable_spec = CableSpec {
+                    description,
+                    conductor_size_sqmm: final_cable.size_sqmm,
+                    ground_size_sqmm: ground_sqmm,
+                    conduit_size_mm: final_cable.conduit_size_mm,
+                    sets,
+                };
+
+                return CableSizingResult {
+                    cable_spec,
+                    ampacity_a: final_cable.ampacity_a * (sets as f64),
+                    voltage_drop_v: vd_v,
+                    voltage_drop_percent: vd_percent,
+                    length_m,
+                    current_a,
+                    upsized_due_to_vd: selected_idx > start_idx || sets > 1,
+                };
+            }
         }
-        selected_idx += 1;
     }
 
-    let final_cable = &STANDARD_CV_CABLES[selected_idx];
-    let (ground_sqmm, _ground_conduit_mm) = select_ground_wire_size_sqmm(final_cable.size_sqmm);
-
+    // Fallback กรณีโหลดสูงพิเศษ เลือกสายขนาดสูงสุดที่ยอมรับได้ 240 mm²
+    let fallback_cable = allowed_cables.last().copied().unwrap_or(&STANDARD_CV_CABLES[0]);
+    let (ground_sqmm, _) = select_ground_wire_size_sqmm(fallback_cable.size_sqmm);
     let cable_spec = CableSpec {
         description: format!(
             "4x1/C-{} mm² FD-0.6/1kV-CV in HDPE {} mm + 1-{} mm² IEC01 (Ground)",
-            final_cable.size_sqmm, final_cable.conduit_size_mm, ground_sqmm
+            fallback_cable.size_sqmm, fallback_cable.conduit_size_mm, ground_sqmm
         ),
-        conductor_size_sqmm: final_cable.size_sqmm,
+        conductor_size_sqmm: fallback_cable.size_sqmm,
         ground_size_sqmm: ground_sqmm,
-        conduit_size_mm: final_cable.conduit_size_mm,
+        conduit_size_mm: fallback_cable.conduit_size_mm,
+        sets: 1,
     };
 
     CableSizingResult {
         cable_spec,
-        ampacity_a: final_cable.ampacity_a,
-        voltage_drop_v: vd_v,
-        voltage_drop_percent: vd_percent,
+        ampacity_a: fallback_cable.ampacity_a,
+        voltage_drop_v: 0.0,
+        voltage_drop_percent: 0.0,
         length_m,
         current_a,
-        upsized_due_to_vd: selected_idx > initial_idx,
+        upsized_due_to_vd: false,
     }
 }
 
@@ -379,10 +436,20 @@ mod tests {
     #[test]
     fn test_voltage_drop_upsize() {
         // ทดสอบกรณีระยะทางไกล (เช่น 150 เมตร) ทำให้เกิด Voltage Drop > 2.0% สำหรับสาย 185 mm²
-        // ระบบจะต้องขยับขนาดสายให้ใหญ่ขึ้นโดยอัตโนมัติ (เช่น เป็น 240 mm² หรือ 300 mm²)
+        // ระบบจะต้องขยับขนาดสายให้ใหญ่ขึ้นโดยอัตโนมัติ (เป็น 240 mm² หรือเพิ่ม sets สายควบ) แต่ขนาดสายต่อเส้นต้องไม่เกิน 240 mm²
         let cable_result = size_cable_with_vd(268.0, 150.0, 0.98, 400.0, 2.0);
-        assert!(cable_result.cable_spec.conductor_size_sqmm > 185.0);
+        assert!(cable_result.cable_spec.conductor_size_sqmm <= 240.0);
         assert!(cable_result.voltage_drop_percent <= 2.0);
         assert!(cable_result.upsized_due_to_vd);
+    }
+
+    #[test]
+    fn test_cable_max_size_is_240_sqmm() {
+        // ทดสอบกระแสขนาดใหญ่พิเศษ เช่น 600 A ระบบจะต้องไม่แนะนำสาย 300 หรือ 400 mm²
+        // แต่ต้องแบ่งเป็นสายควบ (sets >= 2) โดยสายแต่ละเส้นมีขนาดไม่เกิน 240 mm²
+        let cable_result = size_cable_with_vd(600.0, 50.0, 0.98, 400.0, 2.0);
+        assert!(cable_result.cable_spec.conductor_size_sqmm <= 240.0);
+        assert!(cable_result.cable_spec.sets >= 2);
+        assert!(cable_result.voltage_drop_percent <= 2.0);
     }
 }

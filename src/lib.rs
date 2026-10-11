@@ -165,3 +165,55 @@ impl StationDesignEngine {
         })
     }
 }
+
+// โมดูล GUI สำหรับ WebAssembly (Wasm) และ Desktop
+#[cfg(any(target_arch = "wasm32", feature = "gui"))]
+pub mod gui;
+#[cfg(any(target_arch = "wasm32", feature = "gui"))]
+pub use gui::*;
+
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen::prelude::*;
+
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen]
+pub struct WebHandle {
+    runner: eframe::WebRunner,
+}
+
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen]
+impl WebHandle {
+    #[wasm_bindgen(constructor)]
+    pub fn new() -> Self {
+        Self {
+            runner: eframe::WebRunner::new(),
+        }
+    }
+
+    #[wasm_bindgen]
+    pub async fn start(&self, canvas_id: &str) -> Result<(), JsValue> {
+        console_error_panic_hook::set_once();
+        let _ = console_log::init_with_level(log::Level::Debug);
+
+        use wasm_bindgen::JsCast;
+        let window = web_sys::window().ok_or_else(|| JsValue::from_str("No global `window` exists"))?;
+        let document = window.document().ok_or_else(|| JsValue::from_str("No `document` on window"))?;
+        let canvas = document
+            .get_element_by_id(canvas_id)
+            .ok_or_else(|| JsValue::from_str(&format!("Canvas element #{} not found", canvas_id)))?
+            .dyn_into::<web_sys::HtmlCanvasElement>()
+            .map_err(|_| JsValue::from_str("Element is not a HtmlCanvasElement"))?;
+
+        self.runner
+            .start(
+                canvas,
+                eframe::WebOptions::default(),
+                Box::new(|cc| {
+                    gui::theme::setup_custom_fonts(&cc.egui_ctx);
+                    Ok(Box::new(gui::app::EvStationApp::default()))
+                }),
+            )
+            .await
+    }
+}

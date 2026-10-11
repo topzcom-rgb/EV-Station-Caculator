@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="utf-8">
+    <title>EV Station Calculator & Sizing Tool (PEA / MEA / EIT)</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0, minimum-scale=1.0, viewport-fit=cover">
+    
+    <!-- PWA & Mobile Web App Meta -->
+    <meta name="theme-color" content="#16a34a">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="EV Calc">
+    <meta name="format-detection" content="telephone=no">
+
+    <!-- Web Manifest -->
+    <link rel="manifest" href="manifest.json">
+    
+    <style>
+        /* รีเซ็ตและตรึง viewport สำหรับ egui canvas แบบ full window */
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #0f172a; /* Slate 900 */
+            touch-action: none;
+            -webkit-user-select: none;
+            user-select: none;
+            -webkit-touch-callout: none;
+        }
+
+        #the_canvas_id {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            outline: none;
+        }
+
+        /* Loading Spinner */
+        #loading_screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background-color: #0f172a;
+            color: #f8fafc;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            z-index: 1000;
+            transition: opacity 0.3s ease-out;
+        }
+
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 4px solid rgba(255, 255, 255, 0.1);
+            border-left-color: #22c55e;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 20px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .title {
+            font-size: 20px;
+            font-weight: 600;
+            margin-bottom: 8px;
+            letter-spacing: 0.5px;
+        }
+
+        .subtitle {
+            font-size: 14px;
+            color: #94a3b8;
+        }
+    </style>
+    
+    <!-- Trunk Wasm Link -->
+    <link data-trunk rel="rust" data-bin="ev-station-calculator" data-cargo-features="gui" data-wasm-opt="z" />
+    <link data-trunk rel="copy-file" href="manifest.json" />
+    <link data-trunk rel="copy-dir" href="assets" />
+</head>
+<body>
+    <div id="loading_screen">
+        <div class="spinner"></div>
+        <div class="title">⚡ EV Station Calculator</div>
+        <div class="subtitle">กำลังโหลดระบบวิศวกรรมไฟฟ้า...</div>
+    </div>
+
+    <canvas id="the_canvas_id"></canvas>
+
+    <script>
+        // เมื่อ Trunk ทำการโหลดและรัน WebAssembly Application เสร็จสิ้น
+        window.addEventListener('TrunkApplicationStarted', () => {
+            const loadingScreen = document.getElementById('loading_screen');
+            if (loadingScreen) {
+                loadingScreen.style.opacity = '0';
+                setTimeout(() => loadingScreen.remove(), 300);
+            }
+        });
+
+        // ดักจับ error กรณีเกิดข้อผิดพลาดในการโหลด
+        window.addEventListener('error', (event) => {
+            const loadingScreen = document.getElementById('loading_screen');
+            if (loadingScreen && event.message && !event.message.includes('ResizeObserver')) {
+                loadingScreen.innerHTML = `
+                    <div style="color: #ef4444; font-size: 18px; font-weight: bold; margin-bottom: 10px;">❌ เกิดข้อผิดพลาดในการโหลดระบบ</div>
+                    <div style="color: #cbd5e1; font-size: 14px; max-width: 80%; text-align: center;">${event.message}</div>
+                `;
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,22 @@
+{
+  "name": "EV Station Calculator & Sizing Tool",
+  "short_name": "EV Calc",
+  "description": "โปรแกรมคำนวณและออกแบบระบบไฟฟ้าสถานีอัดประจุไฟฟ้าตามมาตรฐาน กฟภ. / กฟน. / วสท.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#16a34a",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "assets/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "assets/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

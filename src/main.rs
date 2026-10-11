@@ -1,11 +1,13 @@
-use ev_station_calculator::models::{AuxLoad, ChargerType, ChargerUnit, PhaseConnection};
-use ev_station_calculator::{
-    export_load_schedule, export_sld_dxf, StationDesignEngine, StationInput,
-};
 use std::path::Path;
 
+pub use ev_station_calculator::models::{AuxLoad, ChargerType, ChargerUnit, PhaseConnection};
+pub use ev_station_calculator::{
+    calc, export, models, export_load_schedule, export_sld_dxf, StationDesignEngine, StationInput,
+    StationOutput,
+};
+
+#[path = "gui/mod.rs"]
 mod gui;
-use gui::{setup_custom_fonts, EvStationApp};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = std::env::args().collect();
@@ -13,24 +15,61 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         return run_cli();
     }
 
-    println!("Starting EV Station Calculator GUI...");
-    let native_options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default()
-            .with_inner_size([1280.0, 800.0])
-            .with_min_inner_size([960.0, 600.0])
-            .with_title("EV Station Calculator & Sizing Tool (PEA / MEA / EIT)"),
-        ..Default::default()
-    };
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        println!("Starting EV Station Calculator GUI...");
+        let native_options = eframe::NativeOptions {
+            viewport: egui::ViewportBuilder::default()
+                .with_inner_size([1280.0, 800.0])
+                .with_min_inner_size([960.0, 600.0])
+                .with_title("EV Station Calculator & Sizing Tool (PEA / MEA / EIT)"),
+            ..Default::default()
+        };
 
-    eframe::run_native(
-        "EV Station Calculator",
-        native_options,
-        Box::new(|cc| {
-            setup_custom_fonts(&cc.egui_ctx);
-            Ok(Box::new(EvStationApp::default()))
-        }),
-    )
-    .map_err(|e| format!("Eframe runtime error: {}", e).into())
+        eframe::run_native(
+            "EV Station Calculator",
+            native_options,
+            Box::new(|cc| {
+                gui::setup_custom_fonts(&cc.egui_ctx);
+                Ok(Box::new(gui::EvStationApp::default()))
+            }),
+        )
+        .map_err(|e| format!("Eframe runtime error: {}", e).into())
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    {
+        use wasm_bindgen::JsCast;
+        console_error_panic_hook::set_once();
+        let _ = console_log::init_with_level(log::Level::Debug);
+
+        let window = web_sys::window().expect("No global `window` exists");
+        let document = window.document().expect("No `document` on window");
+        let canvas = document
+            .get_element_by_id("the_canvas_id")
+            .expect("Canvas element #the_canvas_id not found")
+            .dyn_into::<web_sys::HtmlCanvasElement>()
+            .expect("Element is not a HtmlCanvasElement");
+
+        wasm_bindgen_futures::spawn_local(async move {
+            let runner = eframe::WebRunner::new();
+            if let Err(e) = runner
+                .start(
+                    canvas,
+                    eframe::WebOptions::default(),
+                    Box::new(|cc| {
+                        gui::setup_custom_fonts(&cc.egui_ctx);
+                        Ok(Box::new(gui::EvStationApp::default()))
+                    }),
+                )
+                .await
+            {
+                log::error!("Failed to start eframe: {:?}", e);
+            }
+        });
+
+        Ok(())
+    }
 }
 
 fn run_cli() -> Result<(), Box<dyn std::error::Error>> {

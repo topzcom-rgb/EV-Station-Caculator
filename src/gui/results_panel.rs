@@ -1,8 +1,10 @@
 use egui::{Color32, Grid, RichText, ScrollArea, Ui};
 
 use crate::gui::EvStationApp;
-use ev_station_calculator::export::{export_load_schedule, export_sld_dxf, pick_save_path};
-use ev_station_calculator::StationOutput;
+use crate::export::{
+    export_load_schedule_bytes, export_sld_dxf_bytes, trigger_download,
+};
+use crate::StationOutput;
 
 /// เรนเดอร์หน้าจอสรุปผลทางวิศวกรรมไฟฟ้าบน CentralPanel
 pub fn render_results_panel(app: &mut EvStationApp, ui: &mut Ui) {
@@ -79,20 +81,30 @@ fn render_export_toolbar(
                 .fill(Color32::from_rgb(22, 101, 52));
 
                 if ui.add(xlsx_btn).clicked() {
-                    if let Some(path) = pick_save_path("EV_Station_Load_Schedule", "xlsx") {
-                        match export_load_schedule(&result_clone, &path) {
-                            Ok(_) => {
-                                *export_status = Some((
-                                    format!("บันทึกไฟล์สำเร็จ: {}", path.display()),
-                                    true,
-                                ));
+                    match export_load_schedule_bytes(&result_clone) {
+                        Ok(bytes) => {
+                            let mime = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+                            match trigger_download("EV_Station_Load_Schedule.xlsx", &bytes, mime) {
+                                Ok(Some(path)) => {
+                                    *export_status = Some((
+                                        format!("บันทึก/ดาวน์โหลดสำเร็จ: {}", path.display()),
+                                        true,
+                                    ));
+                                }
+                                Ok(None) => {}
+                                Err(e) => {
+                                    *export_status = Some((
+                                        format!("เกิดข้อผิดพลาดในการบันทึก: {}", e),
+                                        false,
+                                    ));
+                                }
                             }
-                            Err(e) => {
-                                *export_status = Some((
-                                    format!("เกิดข้อผิดพลาดในการบันทึก: {}", e),
-                                    false,
-                                ));
-                            }
+                        }
+                        Err(e) => {
+                            *export_status = Some((
+                                format!("เกิดข้อผิดพลาดในการสร้างไฟล์ Excel: {}", e),
+                                false,
+                            ));
                         }
                     }
                 }
@@ -108,20 +120,30 @@ fn render_export_toolbar(
                 .fill(Color32::from_rgb(3, 105, 161));
 
                 if ui.add(dxf_btn).clicked() {
-                    if let Some(path) = pick_save_path("EV_Station_SLD", "dxf") {
-                        match export_sld_dxf(&result_clone, &path) {
-                            Ok(_) => {
-                                *export_status = Some((
-                                    format!("บันทึกไฟล์สำเร็จ: {}", path.display()),
-                                    true,
-                                ));
+                    match export_sld_dxf_bytes(&result_clone) {
+                        Ok(bytes) => {
+                            let mime = "application/dxf";
+                            match trigger_download("EV_Station_SLD.dxf", &bytes, mime) {
+                                Ok(Some(path)) => {
+                                    *export_status = Some((
+                                        format!("บันทึก/ดาวน์โหลดสำเร็จ: {}", path.display()),
+                                        true,
+                                    ));
+                                }
+                                Ok(None) => {}
+                                Err(e) => {
+                                    *export_status = Some((
+                                        format!("เกิดข้อผิดพลาดในการบันทึก: {}", e),
+                                        false,
+                                    ));
+                                }
                             }
-                            Err(e) => {
-                                *export_status = Some((
-                                    format!("เกิดข้อผิดพลาดในการบันทึก: {}", e),
-                                    false,
-                                ));
-                            }
+                        }
+                        Err(e) => {
+                            *export_status = Some((
+                                format!("เกิดข้อผิดพลาดในการสร้างไฟล์ CAD DXF: {}", e),
+                                false,
+                            ));
                         }
                     }
                 }
@@ -340,9 +362,25 @@ fn render_branch_circuits_section(result: &StationOutput, ui: &mut Ui) {
                     ui.label(&circuit.charger_name);
                     ui.label(format!("{:.1} A", circuit.rated_current_a));
                     ui.label(RichText::new(&circuit.branch_breaker.name).color(Color32::from_rgb(56, 189, 248)));
-                    ui.label(format!("4x1/C-{} mm² FD-CV", circuit.cable_sizing.cable_spec.conductor_size_sqmm));
+                    
+                    let phase_desc = if circuit.cable_sizing.cable_spec.sets > 1 {
+                        format!(
+                            "{}x(4x1/C-{} mm² FD-CV)",
+                            circuit.cable_sizing.cable_spec.sets,
+                            circuit.cable_sizing.cable_spec.conductor_size_sqmm
+                        )
+                    } else {
+                        format!("4x1/C-{} mm² FD-CV", circuit.cable_sizing.cable_spec.conductor_size_sqmm)
+                    };
+                    ui.label(phase_desc);
                     ui.label(format!("1-{} mm² IEC01", circuit.cable_sizing.cable_spec.ground_size_sqmm));
-                    ui.label(format!("HDPE {} mm", circuit.cable_sizing.cable_spec.conduit_size_mm));
+                    
+                    let conduit_desc = if circuit.cable_sizing.cable_spec.sets > 1 {
+                        format!("{}x(HDPE {} mm)", circuit.cable_sizing.cable_spec.sets, circuit.cable_sizing.cable_spec.conduit_size_mm)
+                    } else {
+                        format!("HDPE {} mm", circuit.cable_sizing.cable_spec.conduit_size_mm)
+                    };
+                    ui.label(conduit_desc);
 
                     let vd_color = if circuit.cable_sizing.voltage_drop_percent <= 2.0 {
                         Color32::from_rgb(34, 197, 94)

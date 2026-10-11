@@ -23,4 +23,10 @@ pub struct CableSpec {
     pub conductor_size_sqmm: f64,
     pub ground_size_sqmm: f64,
     pub conduit_size_mm: u32,
+    #[serde(default = "default_sets")]
+    pub sets: u32,
+}
+
+fn default_sets() -> u32 {
+    1
 }

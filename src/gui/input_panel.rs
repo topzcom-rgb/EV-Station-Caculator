@@ -1,7 +1,7 @@
 use egui::{CollapsingHeader, DragValue, ScrollArea, Ui};
 
 use crate::gui::EvStationApp;
-use ev_station_calculator::models::{AuxLoad, ChargerType, ChargerUnit, PhaseConnection};
+use crate::models::{AuxLoad, ChargerType, ChargerUnit, PhaseConnection};
 
 /// ตัวเลือกขนาดมาตรฐานของตู้ชาร์จ
 #[derive(Debug, Clone, Copy, PartialEq)]
