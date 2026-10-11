@@ -1,3 +1,5 @@
+#![allow(dead_code, unused_imports)]
+
 pub mod app;
 pub mod input_panel;
 pub mod results_panel;

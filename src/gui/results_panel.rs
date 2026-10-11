@@ -1,7 +1,8 @@
 use egui::{Color32, Grid, RichText, ScrollArea, Ui};
 
-use crate::export::{export_load_schedule, export_sld_dxf, pick_save_path};
 use crate::gui::EvStationApp;
+use ev_station_calculator::export::{export_load_schedule, export_sld_dxf, pick_save_path};
+use ev_station_calculator::StationOutput;
 
 /// เรนเดอร์หน้าจอสรุปผลทางวิศวกรรมไฟฟ้าบน CentralPanel
 pub fn render_results_panel(app: &mut EvStationApp, ui: &mut Ui) {
@@ -24,7 +25,7 @@ pub fn render_results_panel(app: &mut EvStationApp, ui: &mut Ui) {
                 render_transformer_header_card(result, ui);
                 ui.add_space(10.0);
 
-                // 2. แถบปุ่มส่งออกเอกสารวิศวกรรม (Excel & DXF)
+                // 2. แถบปุ่มส่งออกเอกสารวิศวกรรม (Action Toolbar) ด้านบน
                 render_export_toolbar(result, &mut app.export_status, ui);
                 ui.add_space(14.0);
 
@@ -38,6 +39,11 @@ pub fn render_results_panel(app: &mut EvStationApp, ui: &mut Ui) {
 
                 // 5. ตารางวงจรย่อยและสายไฟตู้ชาร์จแต่ละตู้ (Branch Circuits Table)
                 render_branch_circuits_section(result, ui);
+                ui.add_space(16.0);
+
+                // 6. แถบปุ่มส่งออกเอกสารวิศวกรรม (Action Toolbar) ด้านล่าง
+                render_export_toolbar(result, &mut app.export_status, ui);
+                ui.add_space(16.0);
             } else {
                 ui.label("กำลังรอข้อมูลการคำนวณ...");
             };
@@ -45,78 +51,128 @@ pub fn render_results_panel(app: &mut EvStationApp, ui: &mut Ui) {
 }
 
 fn render_export_toolbar(
-    result: &crate::StationOutput,
+    result: &StationOutput,
     export_status: &mut Option<(String, bool)>,
     ui: &mut Ui,
 ) {
     let result_clone = result.clone();
 
-    ui.group(|ui| {
-        ui.horizontal_wrapped(|ui| {
-            ui.label(RichText::new("📁 ส่งออกเอกสารวิศวกรรม:").strong());
+    egui::Frame::group(ui.style())
+        .fill(Color32::from_rgb(30, 41, 59))
+        .stroke(egui::Stroke::new(1.0, Color32::from_rgb(51, 65, 85)))
+        .inner_margin(egui::Margin::symmetric(14, 10))
+        .show(ui, |ui| {
+            ui.horizontal_wrapped(|ui| {
+                ui.label(
+                    RichText::new("📁 แถบคำสั่งส่งออก (Export Actions):")
+                        .color(Color32::from_rgb(226, 232, 240))
+                        .strong(),
+                );
+                ui.add_space(8.0);
 
-            if ui
-                .button(
-                    RichText::new("📊 ส่งออก Excel Load Schedule (.xlsx)")
-                        .color(Color32::from_rgb(34, 197, 94))
+                let xlsx_btn = egui::Button::new(
+                    RichText::new("📊 Export Load Schedule (.xlsx)")
+                        .color(Color32::from_rgb(240, 253, 244))
+                        .size(16.0)
                         .strong(),
                 )
-                .clicked()
-            {
-                if let Some(path) = pick_save_path("EV_Station_Load_Schedule", "xlsx") {
-                    match export_load_schedule(&result_clone, &path) {
-                        Ok(_) => {
-                            *export_status = Some((
-                                format!("✅ ส่งออก Excel Load Schedule สำเร็จ: {}", path.display()),
-                                true,
-                            ));
-                        }
-                        Err(e) => {
-                            *export_status =
-                                Some((format!("❌ ส่งออก Excel ล้มเหลว: {}", e), false));
+                .fill(Color32::from_rgb(22, 101, 52));
+
+                if ui.add(xlsx_btn).clicked() {
+                    if let Some(path) = pick_save_path("EV_Station_Load_Schedule", "xlsx") {
+                        match export_load_schedule(&result_clone, &path) {
+                            Ok(_) => {
+                                *export_status = Some((
+                                    format!("บันทึกไฟล์สำเร็จ: {}", path.display()),
+                                    true,
+                                ));
+                            }
+                            Err(e) => {
+                                *export_status = Some((
+                                    format!("เกิดข้อผิดพลาดในการบันทึก: {}", e),
+                                    false,
+                                ));
+                            }
                         }
                     }
                 }
+
+                ui.add_space(6.0);
+
+                let dxf_btn = egui::Button::new(
+                    RichText::new("📐 Export Single-Line Diagram (.dxf)")
+                        .color(Color32::from_rgb(240, 249, 255))
+                        .size(16.0)
+                        .strong(),
+                )
+                .fill(Color32::from_rgb(3, 105, 161));
+
+                if ui.add(dxf_btn).clicked() {
+                    if let Some(path) = pick_save_path("EV_Station_SLD", "dxf") {
+                        match export_sld_dxf(&result_clone, &path) {
+                            Ok(_) => {
+                                *export_status = Some((
+                                    format!("บันทึกไฟล์สำเร็จ: {}", path.display()),
+                                    true,
+                                ));
+                            }
+                            Err(e) => {
+                                *export_status = Some((
+                                    format!("เกิดข้อผิดพลาดในการบันทึก: {}", e),
+                                    false,
+                                ));
+                            }
+                        }
+                    }
+                }
+            });
+
+            let mut clear_status = false;
+            if let Some((msg, is_success)) = export_status.as_ref() {
+                let (bg_color, text_color, border_color) = if *is_success {
+                    (
+                        Color32::from_rgb(20, 83, 45),
+                        Color32::from_rgb(220, 252, 231),
+                        Color32::from_rgb(34, 197, 94),
+                    )
+                } else {
+                    (
+                        Color32::from_rgb(127, 29, 29),
+                        Color32::from_rgb(254, 226, 226),
+                        Color32::from_rgb(239, 68, 68),
+                    )
+                };
+
+                ui.add_space(8.0);
+                egui::Frame::group(ui.style())
+                    .fill(bg_color)
+                    .stroke(egui::Stroke::new(1.0, border_color))
+                    .inner_margin(egui::Margin::symmetric(10, 6))
+                    .show(ui, |ui| {
+                        ui.horizontal(|ui| {
+                            let icon = if *is_success { "✅ " } else { "❌ " };
+                            ui.label(
+                                RichText::new(format!("{}{}", icon, msg))
+                                    .color(text_color)
+                                    .size(15.0)
+                                    .strong(),
+                            );
+                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                if ui.small_button("✖").clicked() {
+                                    clear_status = true;
+                                }
+                            });
+                        });
+                    });
             }
 
-            if ui
-                .button(
-                    RichText::new("📐 ส่งออก CAD Single-Line Diagram (.dxf)")
-                        .color(Color32::from_rgb(56, 189, 248))
-                        .strong(),
-                )
-                .clicked()
-            {
-                if let Some(path) = pick_save_path("EV_Station_SLD", "dxf") {
-                    match export_sld_dxf(&result_clone, &path) {
-                        Ok(_) => {
-                            *export_status = Some((
-                                format!("✅ ส่งออก CAD SLD (.dxf) สำเร็จ: {}", path.display()),
-                                true,
-                            ));
-                        }
-                        Err(e) => {
-                            *export_status =
-                                Some((format!("❌ ส่งออก DXF ล้มเหลว: {}", e), false));
-                        }
-                    }
-                }
+            if clear_status {
+                *export_status = None;
             }
         });
-
-        if let Some((msg, is_success)) = export_status.as_ref() {
-            let color = if *is_success {
-                Color32::from_rgb(34, 197, 94)
-            } else {
-                Color32::from_rgb(239, 68, 68)
-            };
-            ui.add_space(4.0);
-            ui.label(RichText::new(msg).color(color).size(15.0));
-        }
-    });
 }
 
-fn render_transformer_header_card(result: &crate::StationOutput, ui: &mut Ui) {
+fn render_transformer_header_card(result: &StationOutput, ui: &mut Ui) {
     egui::Frame::group(ui.style())
         .fill(Color32::from_rgb(20, 83, 45)) // Deep Forest Emerald
         .stroke(egui::Stroke::new(1.5, Color32::from_rgb(34, 197, 94)))
@@ -153,7 +209,7 @@ fn render_transformer_header_card(result: &crate::StationOutput, ui: &mut Ui) {
         });
 }
 
-fn render_load_summary_section(result: &crate::StationOutput, ui: &mut Ui) {
+fn render_load_summary_section(result: &StationOutput, ui: &mut Ui) {
     ui.label(RichText::new("📊 สรุปโหลดและความต้องการพลังงานไฟฟ้า (Load Summary)").heading());
     ui.add_space(4.0);
 
@@ -210,7 +266,7 @@ fn render_load_summary_section(result: &crate::StationOutput, ui: &mut Ui) {
     });
 }
 
-fn render_main_equipment_section(result: &crate::StationOutput, ui: &mut Ui) {
+fn render_main_equipment_section(result: &StationOutput, ui: &mut Ui) {
     ui.label(RichText::new("🏢 อุปกรณ์ตู้ประธานสวิตช์บอร์ด (Main Distribution Board - MDB)").heading());
     ui.add_space(4.0);
 
@@ -259,7 +315,7 @@ fn render_main_equipment_section(result: &crate::StationOutput, ui: &mut Ui) {
     });
 }
 
-fn render_branch_circuits_section(result: &crate::StationOutput, ui: &mut Ui) {
+fn render_branch_circuits_section(result: &StationOutput, ui: &mut Ui) {
     ui.label(RichText::new("🔌 วงจรย่อยและสายป้อนตู้ชาร์จ (EV Charger Branch Circuits)").heading());
     ui.add_space(4.0);
 

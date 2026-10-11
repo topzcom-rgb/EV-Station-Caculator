@@ -6,12 +6,10 @@ edition = "2024"
 [lib]
 crate-type = ["rlib"]
 
-[features]
-default = []
-gui = []
 
 [dependencies]
-egui = { version = "0.36.2", default-features = false }
+eframe = { version = "0.36.2", default-features = false, features = ["wgpu", "default_fonts"] }
+egui = { version = "0.36.2", default-features = false, features = ["default_fonts"] }
 rfd = "0.17.2"
 rust_xlsxwriter = "0.99.1"
 serde = { version = "1.0", features = ["derive"] }

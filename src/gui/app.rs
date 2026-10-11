@@ -1,6 +1,6 @@
-use crate::calc::load::DEFAULT_SYSTEM_VOLTAGE_V;
-use crate::models::{AuxLoad, ChargerType, ChargerUnit, PhaseConnection};
-use crate::{StationDesignEngine, StationInput, StationOutput};
+use ev_station_calculator::calc::load::DEFAULT_SYSTEM_VOLTAGE_V;
+use ev_station_calculator::models::{AuxLoad, ChargerType, ChargerUnit, PhaseConnection};
+use ev_station_calculator::{StationDesignEngine, StationInput, StationOutput};
 
 /// หน่วยของโหลดเสริมที่ผู้ใช้เลือกกรอกใน UI
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -185,23 +185,23 @@ impl EvStationApp {
     }
 }
 
-// impl eframe::App for EvStationApp {
-//     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
-//         // 1. อัปเดตธีม (Dark / Light)
-//         crate::gui::theme::apply_theme(ui.ctx(), self.dark_mode);
-// 
-//         // 2. Input Panel ฝั่งซ้าย
-//         egui::Panel::left("station_input_side_panel")
-//             .default_size(380.0)
-//             .size_range(320.0..=480.0)
-//             .resizable(true)
-//             .show(ui, |ui| {
-//                 crate::gui::input_panel::render_input_panel(self, ui);
-//             });
-// 
-//         // 3. Results Panel ตรงกลาง
-//         egui::CentralPanel::default().show(ui, |ui| {
-//             crate::gui::results_panel::render_results_panel(self, ui);
-//         });
-//     }
-// }
+impl eframe::App for EvStationApp {
+    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        // 1. อัปเดตธีม (Dark / Light)
+        crate::gui::theme::apply_theme(ui.ctx(), self.dark_mode);
+
+        // 2. Input Panel ฝั่งซ้าย
+        egui::Panel::left("station_input_side_panel")
+            .default_size(380.0)
+            .size_range(320.0..=480.0)
+            .resizable(true)
+            .show(ui, |ui| {
+                crate::gui::input_panel::render_input_panel(self, ui);
+            });
+
+        // 3. Results Panel ตรงกลาง
+        egui::CentralPanel::default().show(ui, |ui| {
+            crate::gui::results_panel::render_results_panel(self, ui);
+        });
+    }
+}

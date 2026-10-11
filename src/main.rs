@@ -4,7 +4,36 @@ use ev_station_calculator::{
 };
 use std::path::Path;
 
+mod gui;
+use gui::{setup_custom_fonts, EvStationApp};
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let args: Vec<String> = std::env::args().collect();
+    if args.iter().any(|arg| arg == "--cli" || arg == "-c") {
+        return run_cli();
+    }
+
+    println!("Starting EV Station Calculator GUI...");
+    let native_options = eframe::NativeOptions {
+        viewport: egui::ViewportBuilder::default()
+            .with_inner_size([1280.0, 800.0])
+            .with_min_inner_size([960.0, 600.0])
+            .with_title("EV Station Calculator & Sizing Tool (PEA / MEA / EIT)"),
+        ..Default::default()
+    };
+
+    eframe::run_native(
+        "EV Station Calculator",
+        native_options,
+        Box::new(|cc| {
+            setup_custom_fonts(&cc.egui_ctx);
+            Ok(Box::new(EvStationApp::default()))
+        }),
+    )
+    .map_err(|e| format!("Eframe runtime error: {}", e).into())
+}
+
+fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
     println!("================================================================================");
     println!("       ⚡ EV CHARGING STATION SIZING & SINGLE LINE DIAGRAM CALCULATOR ⚡       ");
     println!("              Standards: PEA / MEA / EIT / IEC 60364 / IEC 61439                ");
@@ -120,7 +149,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let _ = std::fs::remove_file(xlsx_path);
     let _ = std::fs::remove_file(dxf_path);
 
-    println!("\n🎉 การตรวจสอบคำนวณและสร้างเอกสารทั้งหมดเสร็จสมบูรณ์ 100%!");
+    println!("\n🎉 การตรวจสอบคำนวณและสร้างเอกสารทั้งหมดเสร็จสมบูรณ์ 100%! (เปิด GUI ด้วย `cargo run`)");
     println!("================================================================================");
 
     Ok(())
